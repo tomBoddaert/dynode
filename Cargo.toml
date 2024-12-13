@@ -1,0 +1,17 @@
+[package]
+name = "dyn_list"
+version = "0.0.0"
+authors = ["Tom Boddaert"]
+edition = "2021"
+description = "A linked list that can hold dynamically sized values in its nodes."
+readme = "README.md"
+homepage = "https://github.com/tomBoddaert/dyn_list"
+repository = "https://github.com/tomBoddaert/dyn_list"
+license = "MIT OR Apache-2.0"
+keywords = ["data-structures", "linked-list"]
+categories = ["data-structures", "no-std"]
+
+[features]
+default = ["std"]
+std = ["alloc"]
+alloc = []
