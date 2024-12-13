@@ -46,6 +46,7 @@ use core::{
     ptr::{self, NonNull, Pointee},
 };
 
+mod any;
 pub mod cursor;
 pub mod iter;
 mod node;
@@ -226,7 +227,7 @@ where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let mut node = unsafe { self.try_allocate_uninit_front(metadata) }?;
+        let node = unsafe { self.try_allocate_uninit_front(metadata) }?;
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -241,7 +242,7 @@ where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let mut node = unsafe { self.try_allocate_uninit_back(metadata) }?;
+        let node = unsafe { self.try_allocate_uninit_back(metadata) }?;
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -261,7 +262,7 @@ where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let mut node = unsafe { self.allocate_uninit_front(metadata) };
+        let node = unsafe { self.allocate_uninit_front(metadata) };
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
     }
@@ -280,9 +281,53 @@ where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let mut node = unsafe { self.allocate_uninit_back(metadata) };
+        let node = unsafe { self.allocate_uninit_back(metadata) };
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
+    }
+
+    #[must_use]
+    /// Gets a reference to the element at the front of the list.
+    ///
+    /// If the list is empty, this returns [`None`].
+    pub fn front(&self) -> Option<&U> {
+        let Ends { front, .. } = self.ends?;
+        let front = unsafe { front.to_transparent::<<U as Pointee>::Metadata>() };
+        let ptr = unsafe { front.data_ptr() };
+        Some(unsafe { ptr.as_ref() })
+    }
+
+    #[must_use]
+    /// Gets a reference to the element at the back of the list.
+    ///
+    /// If the list is empty, this returns [`None`].
+    pub fn back(&self) -> Option<&U> {
+        let Ends { back, .. } = self.ends?;
+        let back = unsafe { back.to_transparent::<<U as Pointee>::Metadata>() };
+        let ptr = unsafe { back.data_ptr() };
+        Some(unsafe { ptr.as_ref() })
+    }
+
+    #[must_use]
+    /// Gets a mutable reference to the element at the front of the list.
+    ///
+    /// If the list is empty, this returns [`None`].
+    pub fn front_mut(&mut self) -> Option<&mut U> {
+        let Ends { front, .. } = self.ends?;
+        let front = unsafe { front.to_transparent::<<U as Pointee>::Metadata>() };
+        let mut ptr = unsafe { front.data_ptr() };
+        Some(unsafe { ptr.as_mut() })
+    }
+
+    #[must_use]
+    /// Gets a mutable reference to the element at the back of the list.
+    ///
+    /// If the list is empty, this returns [`None`].
+    pub fn back_mut(&mut self) -> Option<&mut U> {
+        let Ends { back, .. } = self.ends?;
+        let back = unsafe { back.to_transparent::<<U as Pointee>::Metadata>() };
+        let mut ptr = unsafe { back.data_ptr() };
+        Some(unsafe { ptr.as_mut() })
     }
 
     #[must_use]
@@ -298,15 +343,12 @@ where
         if let Some(next) = header.next {
             let next_header = unsafe { next.header_ptr().as_mut() };
 
-            debug_assert_eq!(
-                next_header.previous.map(Node::value_ptr),
-                Some(node.value_ptr())
-            );
+            debug_assert_eq!(next_header.previous, Some(node));
             next_header.previous = header.previous;
 
             *front = next.to_opaque();
         } else {
-            debug_assert_eq!(back.value_ptr(), node.value_ptr());
+            debug_assert_eq!(*back, node);
             self.ends = None;
         }
 
@@ -326,15 +368,12 @@ where
         if let Some(previous) = header.previous {
             let previous_header = unsafe { previous.header_ptr().as_mut() };
 
-            debug_assert_eq!(
-                previous_header.next.map(Node::value_ptr),
-                Some(node.value_ptr())
-            );
+            debug_assert_eq!(previous_header.next, Some(node));
             previous_header.next = header.next;
 
             *back = previous.to_opaque();
         } else {
-            debug_assert_eq!(front.value_ptr(), node.value_ptr());
+            debug_assert_eq!(*front, node);
             self.ends = None;
         }
 
@@ -561,8 +600,7 @@ where
         let mut new_list = DynList::new_in(allocator);
 
         for item in self.iter() {
-            let mut node =
-                unsafe { new_list.try_allocate_uninit_back_internal(ptr::metadata(item)) }?;
+            let node = unsafe { new_list.try_allocate_uninit_back_internal(ptr::metadata(item)) }?;
             unsafe { item.clone_to_uninit(node.value_ptr().cast().as_ptr()) };
             unsafe { node.insert() };
         }
@@ -608,10 +646,7 @@ where
             forward_len += 1;
 
             let next_header = unsafe { next.header_ptr().as_ref() };
-            debug_assert_eq!(
-                next_header.previous.map(Node::value_ptr),
-                Some(node.value_ptr())
-            );
+            debug_assert_eq!(next_header.previous, Some(node));
 
             node = next;
             header = next_header;
@@ -623,10 +658,7 @@ where
             backward_len += 1;
 
             let previous_header = unsafe { previous.header_ptr().as_ref() };
-            debug_assert_eq!(
-                previous_header.next.map(Node::value_ptr),
-                Some(node.value_ptr())
-            );
+            debug_assert_eq!(previous_header.next, Some(node));
 
             node = previous;
             header = previous_header;

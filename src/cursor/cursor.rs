@@ -1,6 +1,6 @@
 #[cfg(feature = "alloc")]
 use crate::alloc;
-use core::{alloc::Allocator, ptr::Pointee};
+use core::{alloc::Allocator, fmt, ptr::Pointee};
 
 use crate::{node::OpaqueNode, DynList, Ends};
 
@@ -103,4 +103,14 @@ where
     U: ?Sized + Sync,
     A: Allocator + Sync,
 {
+}
+
+impl<U, A> fmt::Debug for Cursor<'_, U, A>
+where
+    U: ?Sized + fmt::Debug,
+    A: Allocator,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Cursor").field(self).finish()
+    }
 }

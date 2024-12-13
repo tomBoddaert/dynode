@@ -121,20 +121,14 @@ where
         if let Some(previous) = header.previous {
             let previous_header = unsafe { previous.header_ptr().as_mut() };
 
-            debug_assert_eq!(
-                previous_header.next.map(Node::value_ptr),
-                header.next.map(Node::value_ptr)
-            );
+            debug_assert_eq!(previous_header.next, header.next);
             previous_header.next = Some(node);
         }
 
         if let Some(next) = header.next {
             let next_header = unsafe { next.header_ptr().as_mut() };
 
-            debug_assert_eq!(
-                next_header.previous.map(Node::value_ptr),
-                header.previous.map(Node::value_ptr)
-            );
+            debug_assert_eq!(next_header.previous, header.previous);
             next_header.previous = Some(node);
         }
 
@@ -143,11 +137,11 @@ where
                 (Some(_previous), Some(_next)) => {}
 
                 (Some(previous), None) => {
-                    debug_assert_eq!(back.value_ptr(), previous.value_ptr());
+                    debug_assert_eq!(*back, previous);
                     *back = node.to_opaque();
                 }
                 (None, Some(next)) => {
-                    debug_assert_eq!(front.value_ptr(), next.value_ptr());
+                    debug_assert_eq!(*front, next);
                     *front = node.to_opaque();
                 }
 
@@ -411,8 +405,19 @@ where
     A: Allocator,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple(type_name::<Self>())
+        f.debug_tuple("MaybeUninitNode")
             .field(&type_name::<U>() as &dyn fmt::Debug)
             .finish()
+    }
+}
+
+impl<U, A> fmt::Pointer for MaybeUninitNode<'_, U, A>
+where
+    U: ?Sized,
+    A: Allocator,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.node.fmt(f)
     }
 }

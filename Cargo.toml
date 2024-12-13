@@ -1,6 +1,6 @@
 [package]
 name = "dyn_list"
-version = "0.0.0"
+version = "0.0.1"
 authors = ["Tom Boddaert"]
 edition = "2021"
 description = "A linked list that can hold dynamically sized values in its nodes."

@@ -44,7 +44,7 @@ where
     /// # Errors
     /// If allocation fails, this will return an [`AllocError`].
     pub fn try_push_front(&mut self, value: T) -> Result<(), AllocError> {
-        let mut node = self.try_allocate_uninit_sized_front()?;
+        let node = self.try_allocate_uninit_sized_front()?;
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -56,7 +56,7 @@ where
     /// # Errors
     /// If allocation fails, this will return an [`AllocError`].
     pub fn try_push_back(&mut self, value: T) -> Result<(), AllocError> {
-        let mut node = self.try_allocate_uninit_sized_back()?;
+        let node = self.try_allocate_uninit_sized_back()?;
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -65,7 +65,7 @@ where
     #[inline]
     /// Pushes `value` to the front of the list.
     pub fn push_front(&mut self, value: T) {
-        let mut node = self.allocate_uninit_sized_front();
+        let node = self.allocate_uninit_sized_front();
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
     }
@@ -73,7 +73,7 @@ where
     #[inline]
     /// Pushes `value` to the back of the list.
     pub fn push_back(&mut self, value: T) {
-        let mut node = self.allocate_uninit_sized_back();
+        let node = self.allocate_uninit_sized_back();
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
     }

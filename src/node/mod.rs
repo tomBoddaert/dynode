@@ -2,6 +2,7 @@
 
 use core::{
     alloc::{Allocator, Layout, LayoutError},
+    fmt,
     marker::PhantomData,
     ptr::{NonNull, Pointee},
 };
@@ -18,7 +19,6 @@ mod header;
 mod maybe_uninit;
 mod opaque;
 
-#[derive(Debug)]
 #[repr(transparent)]
 pub struct Node<Metadata> {
     mid_ptr: NonNull<()>,
@@ -161,3 +161,40 @@ impl<Metadata> Node<Metadata> {
         unsafe { allocator.deallocate(ptr, layout) };
     }
 }
+
+impl<Metadata> fmt::Debug for Node<Metadata> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Node").field(&self.mid_ptr).finish()
+    }
+}
+
+impl<M1, M2> PartialEq<Node<M2>> for Node<M1> {
+    #[inline]
+    fn eq(&self, other: &Node<M2>) -> bool {
+        self.value_ptr() == other.value_ptr()
+    }
+}
+
+impl<Metadata> PartialEq<OpaqueNode> for Node<Metadata> {
+    #[inline]
+    fn eq(&self, other: &OpaqueNode) -> bool {
+        self.value_ptr() == other.value_ptr()
+    }
+}
+
+impl<Metadata> PartialEq<Node<Metadata>> for OpaqueNode {
+    #[inline]
+    fn eq(&self, other: &Node<Metadata>) -> bool {
+        self.value_ptr() == other.value_ptr()
+    }
+}
+
+impl PartialEq for OpaqueNode {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.value_ptr() == other.value_ptr()
+    }
+}
+
+impl<Metadata> Eq for Node<Metadata> {}
+impl Eq for OpaqueNode {}

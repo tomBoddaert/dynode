@@ -1,4 +1,4 @@
-use core::ptr::NonNull;
+use core::{fmt, ptr::NonNull};
 
 use super::Node;
 
@@ -29,5 +29,18 @@ impl OpaqueNode {
     #[inline]
     pub const unsafe fn to_transparent<Metadata>(self) -> Node<Metadata> {
         unsafe { Node::from_value_ptr(self.value_ptr()) }
+    }
+}
+
+impl fmt::Debug for OpaqueNode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("OpaqueNode").field(&self.mid_ptr).finish()
+    }
+}
+
+impl fmt::Pointer for OpaqueNode {
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.value_ptr().fmt(f)
     }
 }

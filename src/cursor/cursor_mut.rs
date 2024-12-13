@@ -2,6 +2,7 @@
 use crate::alloc;
 use core::{
     alloc::{AllocError, Allocator, Layout},
+    fmt,
     marker::Unsize,
     ptr::{self, Pointee},
 };
@@ -237,7 +238,7 @@ where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let mut node = unsafe { self.try_allocate_uninit_before(metadata) }?;
+        let node = unsafe { self.try_allocate_uninit_before(metadata) }?;
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -252,7 +253,7 @@ where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let mut node = unsafe { self.try_allocate_uninit_after(metadata) }?;
+        let node = unsafe { self.try_allocate_uninit_after(metadata) }?;
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -264,7 +265,7 @@ where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let mut node = unsafe { self.allocate_uninit_before(metadata) };
+        let node = unsafe { self.allocate_uninit_before(metadata) };
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
     }
@@ -275,7 +276,7 @@ where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let mut node = unsafe { self.allocate_uninit_after(metadata) };
+        let node = unsafe { self.allocate_uninit_after(metadata) };
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
     }
@@ -294,10 +295,7 @@ where
         if let Some(next) = header.next {
             let next_header = unsafe { next.header_ptr().as_mut() };
 
-            debug_assert_eq!(
-                next_header.previous.map(Node::value_ptr),
-                Some(node.value_ptr())
-            );
+            debug_assert_eq!(next_header.previous, Some(node));
             next_header.previous = header.previous;
 
             *front = next.to_opaque();
@@ -305,10 +303,7 @@ where
 
         if let Some(previous) = header.previous {
             let previous_header = unsafe { previous.header_ptr().as_mut() };
-            debug_assert_eq!(
-                previous_header.next.map(Node::value_ptr),
-                Some(node.value_ptr())
-            );
+            debug_assert_eq!(previous_header.next, Some(node));
             previous_header.next = header.next;
         }
 
@@ -316,11 +311,11 @@ where
             (Some(_next), Some(_previous)) => {}
 
             (None, Some(previous)) => {
-                debug_assert_eq!(back.value_ptr(), node.value_ptr());
+                debug_assert_eq!(*back, node);
                 *back = previous.to_opaque();
             }
             (Some(next), None) => {
-                debug_assert_eq!(front.value_ptr(), node.value_ptr());
+                debug_assert_eq!(*front, node);
                 *front = next.to_opaque();
             }
 
@@ -345,7 +340,7 @@ where
     #[cfg(feature = "alloc")]
     #[must_use]
     #[inline]
-    /// Attempts to remove the current node and return it in a [`Box`].
+    /// Attempts to remove the current node and return its value in a [`Box`].
     ///
     /// If the cursor is pointing to the "ghost" element, this returns [`None`].
     ///
@@ -363,7 +358,7 @@ where
     #[cfg(feature = "alloc")]
     #[must_use]
     #[inline]
-    /// Removes the current node and returns it in a [`Box`].
+    /// Removes the current node and returns its value in a [`Box`].
     ///
     /// If the cursor is pointing to the "ghost" element, this returns [`None`].
     pub fn remove_current_boxed(&mut self) -> Option<alloc::Box<U, A>>
@@ -386,4 +381,14 @@ where
     U: ?Sized + Sync,
     A: Allocator + Sync,
 {
+}
+
+impl<U, A> fmt::Debug for CursorMut<'_, U, A>
+where
+    U: ?Sized + fmt::Debug,
+    A: Allocator,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CursorMut").field(self).finish()
+    }
 }
