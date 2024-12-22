@@ -1,7 +1,7 @@
 #[cfg(feature = "alloc")]
 use crate::alloc;
 use core::{
-    alloc::{AllocError, Allocator, Layout},
+    alloc::{Allocator, Layout},
     fmt,
     marker::Unsize,
     ptr::{self, Pointee},
@@ -95,9 +95,16 @@ where
         self.list
     }
 
-    // unsafe on metadata being valid and conditions for Layout::from_value_raw
-    #[inline]
-    unsafe fn try_allocate_uninit_before_internal(
+    /// Attempts to allocate an uninitialised node before the current node.
+    ///
+    /// If the cursor is on the "ghost" element, this will allocate the node at the back of the list.
+    ///
+    /// # Safety
+    /// The `metadata` must be valid under the safety conditions for [`Layout::for_value_raw`].
+    ///
+    /// # Errors
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub unsafe fn try_allocate_uninit_before(
         &mut self,
         metadata: <U as Pointee>::Metadata,
     ) -> Result<MaybeUninitNode<U, A>, AllocateError> {
@@ -132,9 +139,16 @@ where
         }
     }
 
-    // unsafe on metadata being valid and conditions for Layout::from_value_raw
-    #[inline]
-    unsafe fn try_allocate_uninit_after_internal(
+    /// Attempts to allocate an uninitialised node after the current node.
+    ///
+    /// If the cursor is on the "ghost" element, this will allocate the node at the front of the list.
+    ///
+    /// # Safety
+    /// The `metadata` must be valid under the safety conditions for [`Layout::for_value_raw`].
+    ///
+    /// # Errors
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub unsafe fn try_allocate_uninit_after(
         &mut self,
         metadata: <U as Pointee>::Metadata,
     ) -> Result<MaybeUninitNode<U, A>, AllocateError> {
@@ -169,38 +183,6 @@ where
         }
     }
 
-    /// Attempts to allocate an uninitialised node before the current node.
-    ///
-    /// If the cursor is on the "ghost" element, this will allocate the node at the back of the list.
-    ///
-    /// # Safety
-    /// The `metadata` must be valid under the safety conditions for [`Layout::for_value_raw`].
-    ///
-    /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub unsafe fn try_allocate_uninit_before(
-        &mut self,
-        metadata: <U as Pointee>::Metadata,
-    ) -> Result<MaybeUninitNode<U, A>, AllocError> {
-        unsafe { self.try_allocate_uninit_before_internal(metadata) }.map_err(Into::into)
-    }
-
-    /// Attempts to allocate an uninitialised node after the current node.
-    ///
-    /// If the cursor is on the "ghost" element, this will allocate the node at the front of the list.
-    ///
-    /// # Safety
-    /// The `metadata` must be valid under the safety conditions for [`Layout::for_value_raw`].
-    ///
-    /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub unsafe fn try_allocate_uninit_after(
-        &mut self,
-        metadata: <U as Pointee>::Metadata,
-    ) -> Result<MaybeUninitNode<U, A>, AllocError> {
-        unsafe { self.try_allocate_uninit_after_internal(metadata) }.map_err(Into::into)
-    }
-
     /// Allocates an uninitialised node before the current node.
     ///
     /// If the cursor is on the "ghost" element, this will allocate the node at the back of the list.
@@ -212,7 +194,7 @@ where
         &mut self,
         metadata: <U as Pointee>::Metadata,
     ) -> MaybeUninitNode<U, A> {
-        AllocateError::unwrap_alloc(unsafe { self.try_allocate_uninit_before_internal(metadata) })
+        AllocateError::unwrap_result(unsafe { self.try_allocate_uninit_before(metadata) })
     }
 
     /// Allocates an uninitialised node after the current node.
@@ -226,19 +208,22 @@ where
         &mut self,
         metadata: <U as Pointee>::Metadata,
     ) -> MaybeUninitNode<U, A> {
-        AllocateError::unwrap_alloc(unsafe { self.try_allocate_uninit_after_internal(metadata) })
+        AllocateError::unwrap_result(unsafe { self.try_allocate_uninit_after(metadata) })
     }
 
     /// Attempts to insert `value` before the current node and unsize it to `U`.
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub fn try_insert_before_unsize<T>(&mut self, value: T) -> Result<(), AllocError>
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_insert_before_unsize<T>(&mut self, value: T) -> Result<(), AllocateError<T>>
     where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let node = unsafe { self.try_allocate_uninit_before(metadata) }?;
+        let node = match unsafe { self.try_allocate_uninit_before(metadata) } {
+            Ok(node) => node,
+            Err(error) => return Err(error.with_value(value)),
+        };
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -247,13 +232,16 @@ where
     /// Attempts to insert `value` after the current node and unsize it to `U`.
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub fn try_insert_after_unsize<T>(&mut self, value: T) -> Result<(), AllocError>
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_insert_after_unsize<T>(&mut self, value: T) -> Result<(), AllocateError<T>>
     where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let node = unsafe { self.try_allocate_uninit_after(metadata) }?;
+        let node = match unsafe { self.try_allocate_uninit_before(metadata) } {
+            Ok(node) => node,
+            Err(error) => return Err(error.with_value(value)),
+        };
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -345,14 +333,19 @@ where
     /// If the cursor is pointing to the "ghost" element, this returns [`None`].
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    /// The node will be deleted.
-    pub fn try_remove_current_boxed(&mut self) -> Option<Result<alloc::Box<U, A>, AllocError>>
+    /// If allocation fails, this will return an [`AllocateError`].
+    /// The node will not be removed.
+    pub fn try_remove_current_boxed(&mut self) -> Option<Result<alloc::Box<U, A>, AllocateError>>
     where
         A: Clone,
     {
-        self.remove_current_node()
-            .map(|node| unsafe { node.try_take_boxed() })
+        self.remove_current_node().map(|node| {
+            unsafe { node.try_take_boxed() }.map_err(|error| {
+                let (node, error) = error.into_parts();
+                unsafe { node.insert() };
+                error
+            })
+        })
     }
 
     #[cfg(feature = "alloc")]
@@ -365,8 +358,8 @@ where
     where
         A: Clone,
     {
-        self.remove_current_node()
-            .map(|node| unsafe { node.take_boxed() })
+        self.try_remove_current_boxed()
+            .map(AllocateError::unwrap_result)
     }
 }
 

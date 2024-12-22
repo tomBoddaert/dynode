@@ -1,6 +1,6 @@
-use core::alloc::{AllocError, Allocator};
+use core::alloc::Allocator;
 
-use crate::MaybeUninitNode;
+use crate::{node::AllocateError, MaybeUninitNode};
 
 use super::CursorMut;
 
@@ -14,10 +14,10 @@ where
     /// If the cursor is on the "ghost" element, this will allocate the node at the back of the list.
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
+    /// If allocation fails, this will return an [`AllocateError`].
     pub fn try_allocate_uninit_sized_before(
         &mut self,
-    ) -> Result<MaybeUninitNode<T, A>, AllocError> {
+    ) -> Result<MaybeUninitNode<T, A>, AllocateError> {
         unsafe { self.try_allocate_uninit_before(()) }
     }
 
@@ -27,8 +27,10 @@ where
     /// If the cursor is on the "ghost" element, this will allocate the node at the back of the list.
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub fn try_allocate_uninit_sized_after(&mut self) -> Result<MaybeUninitNode<T, A>, AllocError> {
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_allocate_uninit_sized_after(
+        &mut self,
+    ) -> Result<MaybeUninitNode<T, A>, AllocateError> {
         unsafe { self.try_allocate_uninit_after(()) }
     }
 
@@ -53,9 +55,12 @@ where
     /// Attempts to insert `value` before the current node.
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub fn try_insert_before(&mut self, value: T) -> Result<(), AllocError> {
-        let node = self.try_allocate_uninit_sized_before()?;
+    /// If allocation fails, this will return an [`AllocateError`] containing `value`.
+    pub fn try_insert_before(&mut self, value: T) -> Result<(), AllocateError<T>> {
+        let node = match self.try_allocate_uninit_sized_before() {
+            Ok(node) => node,
+            Err(error) => return Err(error.with_value(value)),
+        };
         unsafe { node.as_ptr().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -64,9 +69,12 @@ where
     /// Attempts to insert `value` after the current node.
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub fn try_insert_after(&mut self, value: T) -> Result<(), AllocError> {
-        let node = self.try_allocate_uninit_sized_after()?;
+    /// If allocation fails, this will return an [`AllocateError`] containing `value`.
+    pub fn try_insert_after(&mut self, value: T) -> Result<(), AllocateError<T>> {
+        let node = match self.try_allocate_uninit_sized_after() {
+            Ok(node) => node,
+            Err(error) => return Err(error.with_value(value)),
+        };
         unsafe { node.as_ptr().write(value) };
         unsafe { node.insert() };
         Ok(())

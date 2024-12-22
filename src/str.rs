@@ -1,4 +1,4 @@
-use core::alloc::{AllocError, Allocator, Layout};
+use core::alloc::{Allocator, Layout};
 
 use crate::{
     node::{AllocateError, Header, Node},
@@ -25,12 +25,15 @@ where
         unsafe { DynList::from_raw_parts(ends, allocator) }
     }
 
-    #[inline]
-    fn try_allocate_uninit_str_front_internal(
+    /// Attempts to allocate an uninitialised str node at the front of the list.
+    ///
+    /// # Errors
+    /// If allocation fails, or an arithmetic overflow occours in [`Layout::array`], this will return an [`AllocateError`].
+    pub fn try_allocate_uninit_str_front(
         &mut self,
         length: usize,
     ) -> Result<MaybeUninitNode<str, A>, AllocateError> {
-        let value_layout = Layout::array::<u8>(length)?;
+        let value_layout = Layout::array::<u8>(length).map_err(AllocateError::new_layout)?;
 
         let header = Header {
             next: self
@@ -43,12 +46,15 @@ where
         unsafe { Node::try_new_uninit(self, value_layout, header) }
     }
 
-    #[inline]
-    fn try_allocate_uninit_str_back_internal(
+    /// Attempts to allocate an uninitialised str node at the back of the list.
+    ///
+    /// # Errors
+    /// If allocation fails, or an arithmetic overflow occours in [`Layout::array`], this will return an [`AllocateError`].
+    pub fn try_allocate_uninit_str_back(
         &mut self,
         length: usize,
     ) -> Result<MaybeUninitNode<str, A>, AllocateError> {
-        let value_layout = Layout::array::<u8>(length)?;
+        let value_layout = Layout::array::<u8>(length).map_err(AllocateError::new_layout)?;
 
         let header = Header {
             next: None,
@@ -61,47 +67,23 @@ where
         unsafe { Node::try_new_uninit(self, value_layout, header) }
     }
 
-    /// Attempts to allocate an uninitialised str node at the front of the list.
-    ///
-    /// # Errors
-    /// If allocation fails, or an arithmetic overflow occours in [`Layout::array`], this will return an [`AllocError`].
-    pub fn try_allocate_uninit_str_front(
-        &mut self,
-        length: usize,
-    ) -> Result<MaybeUninitNode<str, A>, AllocError> {
-        self.try_allocate_uninit_str_front_internal(length)
-            .map_err(Into::into)
-    }
-
-    /// Attempts to allocate an uninitialised str node at the back of the list.
-    ///
-    /// # Errors
-    /// If allocation fails, or an arithmetic overflow occours in [`Layout::array`], this will return an [`AllocError`].
-    pub fn try_allocate_uninit_str_back(
-        &mut self,
-        length: usize,
-    ) -> Result<MaybeUninitNode<str, A>, AllocError> {
-        self.try_allocate_uninit_str_back_internal(length)
-            .map_err(Into::into)
-    }
-
     #[must_use]
     /// Allocates an uninitialised str node at the front of the list.
     pub fn allocate_uninit_str_front(&mut self, length: usize) -> MaybeUninitNode<str, A> {
-        AllocateError::unwrap_alloc(self.try_allocate_uninit_str_front_internal(length))
+        AllocateError::unwrap_result(self.try_allocate_uninit_str_front(length))
     }
 
     #[must_use]
     /// Allocates an uninitialised str node at the back of the list.
     pub fn allocate_uninit_str_back(&mut self, length: usize) -> MaybeUninitNode<str, A> {
-        AllocateError::unwrap_alloc(self.try_allocate_uninit_str_back_internal(length))
+        AllocateError::unwrap_result(self.try_allocate_uninit_str_back(length))
     }
 
     /// Attempts to copy the string slice `src` and push it to the front of the list.
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub fn try_push_front_copy_str(&mut self, src: &str) -> Result<(), AllocError> {
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_push_front_copy_str(&mut self, src: &str) -> Result<(), AllocateError> {
         let mut node = self.try_allocate_uninit_str_front(src.len())?;
         node.copy_from_str(src);
         unsafe { node.insert() };
@@ -111,8 +93,8 @@ where
     /// Attempts to copy the string slice `src` and push it to the back of the list.
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub fn try_push_back_copy_str(&mut self, src: &str) -> Result<(), AllocError> {
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_push_back_copy_str(&mut self, src: &str) -> Result<(), AllocateError> {
         let mut node = self.try_allocate_uninit_str_back(src.len())?;
         node.copy_from_str(src);
         unsafe { node.insert() };

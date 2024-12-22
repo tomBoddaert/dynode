@@ -38,7 +38,7 @@ mod alloc {
 }
 
 use core::{
-    alloc::{AllocError, Allocator, Layout},
+    alloc::{Allocator, Layout},
     clone::CloneToUninit,
     fmt,
     marker::{PhantomData, Unsize},
@@ -58,8 +58,8 @@ use cursor::{Cursor, CursorMut};
 #[cfg(feature = "alloc")]
 use iter::IntoIterBoxed;
 use iter::{Iter, IterMut};
-pub use node::MaybeUninitNode;
-use node::{AllocateError, Header, Node, OpaqueNode};
+pub use node::{AllocateError, MaybeUninitNode};
+use node::{Header, Node, OpaqueNode};
 
 #[derive(Clone, Copy)]
 struct Ends {
@@ -129,8 +129,14 @@ where
         }
     }
 
-    #[inline]
-    unsafe fn try_allocate_uninit_front_internal(
+    /// Attempts to allocate an uninitialised node at the front of the list.
+    ///
+    /// # Safety
+    /// The `metadata` must be valid under the safety conditions for [`Layout::for_value_raw`].
+    ///
+    /// # Errors
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub unsafe fn try_allocate_uninit_front(
         &mut self,
         metadata: <U as Pointee>::Metadata,
     ) -> Result<MaybeUninitNode<U, A>, AllocateError> {
@@ -148,8 +154,14 @@ where
         unsafe { Node::try_new_uninit(self, value_layout, header) }
     }
 
-    #[inline]
-    unsafe fn try_allocate_uninit_back_internal(
+    /// Attempts to allocate an uninitialised node at the back of the list.
+    ///
+    /// # Safety
+    /// The `metadata` must be valid under the safety conditions for [`Layout::for_value_raw`].
+    ///
+    /// # Errors
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub unsafe fn try_allocate_uninit_back(
         &mut self,
         metadata: <U as Pointee>::Metadata,
     ) -> Result<MaybeUninitNode<U, A>, AllocateError> {
@@ -166,34 +178,6 @@ where
         unsafe { Node::try_new_uninit(self, value_layout, header) }
     }
 
-    /// Attempts to allocate an uninitialised node at the front of the list.
-    ///
-    /// # Safety
-    /// The `metadata` must be valid under the safety conditions for [`Layout::for_value_raw`].
-    ///
-    /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub unsafe fn try_allocate_uninit_front(
-        &mut self,
-        metadata: <U as Pointee>::Metadata,
-    ) -> Result<MaybeUninitNode<U, A>, AllocError> {
-        unsafe { self.try_allocate_uninit_front_internal(metadata) }.map_err(Into::into)
-    }
-
-    /// Attempts to allocate an uninitialised node at the back of the list.
-    ///
-    /// # Safety
-    /// The `metadata` must be valid under the safety conditions for [`Layout::for_value_raw`].
-    ///
-    /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub unsafe fn try_allocate_uninit_back(
-        &mut self,
-        metadata: <U as Pointee>::Metadata,
-    ) -> Result<MaybeUninitNode<U, A>, AllocError> {
-        unsafe { self.try_allocate_uninit_back_internal(metadata) }.map_err(Into::into)
-    }
-
     #[must_use]
     /// Allocates an uninitialised node at the front of the list.
     ///
@@ -203,7 +187,7 @@ where
         &mut self,
         metadata: <U as Pointee>::Metadata,
     ) -> MaybeUninitNode<U, A> {
-        AllocateError::unwrap_alloc(unsafe { self.try_allocate_uninit_front_internal(metadata) })
+        AllocateError::unwrap_result(unsafe { self.try_allocate_uninit_front(metadata) })
     }
 
     #[must_use]
@@ -215,19 +199,22 @@ where
         &mut self,
         metadata: <U as Pointee>::Metadata,
     ) -> MaybeUninitNode<U, A> {
-        AllocateError::unwrap_alloc(unsafe { self.try_allocate_uninit_back_internal(metadata) })
+        AllocateError::unwrap_result(unsafe { self.try_allocate_uninit_back(metadata) })
     }
 
     /// Attempts to push `value` to the front of the list and unsize it to `U`.
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub fn try_push_front_unsize<T>(&mut self, value: T) -> Result<(), AllocError>
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_push_front_unsize<T>(&mut self, value: T) -> Result<(), AllocateError<T>>
     where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let node = unsafe { self.try_allocate_uninit_front(metadata) }?;
+        let node = match unsafe { self.try_allocate_uninit_front(metadata) } {
+            Ok(node) => node,
+            Err(error) => return Err(error.with_value(value)),
+        };
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -236,13 +223,16 @@ where
     /// Attempts to push `value` to the back of the list and unsize it to `U`.
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub fn try_push_back_unsize<T>(&mut self, value: T) -> Result<(), AllocError>
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_push_back_unsize<T>(&mut self, value: T) -> Result<(), AllocateError<T>>
     where
         T: Unsize<U>,
     {
         let metadata = ptr::metadata(&value as &U);
-        let node = unsafe { self.try_allocate_uninit_back(metadata) }?;
+        let node = match unsafe { self.try_allocate_uninit_back(metadata) } {
+            Ok(node) => node,
+            Err(error) => return Err(error.with_value(value)),
+        };
         unsafe { node.value_ptr().cast().write(value) };
         unsafe { node.insert() };
         Ok(())
@@ -387,7 +377,7 @@ where
     ///
     /// # Examples
     /// ```
-    /// # use std::fmt::Debug;
+    /// # use core::fmt::Debug;
     /// # use dyn_list::DynList;
     /// let mut list = DynList::<dyn Debug>::new();
     /// assert!(!list.delete_front());
@@ -408,7 +398,7 @@ where
     ///
     /// # Examples
     /// ```
-    /// # use std::fmt::Debug;
+    /// # use core::fmt::Debug;
     /// # use dyn_list::DynList;
     /// let mut list = DynList::<dyn Debug>::new();
     /// assert!(!list.delete_back());
@@ -428,14 +418,19 @@ where
     /// Attempts to remove the front node and return it in a [`Box`].
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
+    /// If allocation fails, this will return an [`AllocateError`].
     /// The node will be deleted.
-    pub fn try_pop_front_boxed(&mut self) -> Option<Result<alloc::Box<U, A>, AllocError>>
+    pub fn try_pop_front_boxed(&mut self) -> Option<Result<alloc::Box<U, A>, AllocateError>>
     where
         A: Clone,
     {
-        self.pop_front_node()
-            .map(|front| unsafe { front.try_take_boxed() })
+        self.pop_front_node().map(|front| {
+            unsafe { front.try_take_boxed() }.map_err(|error| {
+                let (front, error) = error.into_parts();
+                unsafe { front.insert() };
+                error
+            })
+        })
     }
 
     #[cfg(feature = "alloc")]
@@ -444,14 +439,19 @@ where
     /// Attempts to remove the back node and return it in a [`Box`].
     ///
     /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
+    /// If allocation fails, this will return an [`AllocateError`].
     /// The node will be deleted.
-    pub fn try_pop_back_boxed(&mut self) -> Option<Result<alloc::Box<U, A>, AllocError>>
+    pub fn try_pop_back_boxed(&mut self) -> Option<Result<alloc::Box<U, A>, AllocateError>>
     where
         A: Clone,
     {
-        self.pop_back_node()
-            .map(|front| unsafe { front.try_take_boxed() })
+        self.pop_back_node().map(|front| {
+            unsafe { front.try_take_boxed() }.map_err(|error| {
+                let (front, error) = error.into_parts();
+                unsafe { front.insert() };
+                error
+            })
+        })
     }
 
     #[cfg(feature = "alloc")]
@@ -470,8 +470,7 @@ where
     where
         A: Clone,
     {
-        self.pop_front_node()
-            .map(|front| unsafe { front.take_boxed() })
+        self.try_pop_front_boxed().map(AllocateError::unwrap_result)
     }
 
     #[cfg(feature = "alloc")]
@@ -490,8 +489,7 @@ where
     where
         A: Clone,
     {
-        self.pop_back_node()
-            .map(|back| unsafe { back.take_boxed() })
+        self.try_pop_back_boxed().map(AllocateError::unwrap_result)
     }
 
     #[must_use]
@@ -591,33 +589,24 @@ where
         IntoIterBoxed::new(self)
     }
 
-    #[inline]
-    fn try_clone_in_internal<A2>(&self, allocator: A2) -> Result<DynList<U, A2>, AllocateError>
+    /// Attempts to clone the list into another allocator.
+    ///
+    /// # Errors
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_clone_in<A2>(&self, allocator: A2) -> Result<DynList<U, A2>, AllocateError>
     where
         U: CloneToUninit,
         A2: Allocator,
     {
         let mut new_list = DynList::new_in(allocator);
 
-        for item in self.iter() {
-            let node = unsafe { new_list.try_allocate_uninit_back_internal(ptr::metadata(item)) }?;
+        for item in self {
+            let node = unsafe { new_list.try_allocate_uninit_back(ptr::metadata(item)) }?;
             unsafe { item.clone_to_uninit(node.value_ptr().cast().as_ptr()) };
             unsafe { node.insert() };
         }
 
         Ok(new_list)
-    }
-
-    /// Attempts to clone the list into another allocator.
-    ///
-    /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub fn try_clone_in<A2>(&self, allocator: A2) -> Result<DynList<U, A2>, AllocError>
-    where
-        U: CloneToUninit,
-        A2: Allocator,
-    {
-        self.try_clone_in_internal(allocator).map_err(Into::into)
     }
 
     #[must_use]
@@ -627,7 +616,7 @@ where
         U: CloneToUninit,
         A2: Allocator,
     {
-        AllocateError::unwrap_alloc(self.try_clone_in_internal(allocator))
+        AllocateError::unwrap_result(self.try_clone_in(allocator))
     }
 
     #[cfg(test)]

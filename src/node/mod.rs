@@ -25,9 +25,6 @@ pub struct Node<Metadata> {
     _phantom: PhantomData<NonNull<Metadata>>,
 }
 
-// TODO: Add PartialEq impls to Node w.r.t. itself and OpaqueNode to avoid comparing value_ptrs in every debug assert
-//       + refactor debug asserts
-
 // Manually implemented to avoid `Copy` bound on `Metadata`
 impl<Metadata> Clone for Node<Metadata> {
     #[inline]
@@ -108,18 +105,16 @@ impl<Metadata> Node<Metadata> {
 
     #[inline]
     // unsafe on U matching value_layout
-    unsafe fn try_alloc_internal<A>(
-        allocator: A,
-        value_layout: Layout,
-    ) -> Result<Self, AllocateError>
+    unsafe fn try_alloc<A>(allocator: A, value_layout: Layout) -> Result<Self, AllocateError>
     where
         A: Allocator,
     {
-        let (layout, value_offset) = Self::alloc_layout(value_layout)?;
+        let (layout, value_offset) =
+            Self::alloc_layout(value_layout).map_err(AllocateError::new_layout)?;
 
         let ptr = allocator
             .allocate(layout)
-            .map_err(|error| AllocateError::Alloc { error, layout })?;
+            .map_err(|error| AllocateError::new_alloc(error, layout))?;
         let mid_ptr = unsafe { ptr.cast::<()>().byte_add(value_offset) };
 
         Ok(Self {
@@ -137,7 +132,7 @@ impl<Metadata> Node<Metadata> {
         U: ?Sized,
         A: Allocator,
     {
-        let node = unsafe { Self::try_alloc_internal(list.allocator.by_ref(), value_layout) }?;
+        let node = unsafe { Self::try_alloc(list.allocator.by_ref(), value_layout) }?;
         unsafe { node.header_ptr().write(header) };
         Ok(unsafe { MaybeUninitNode::new(list, node.to_opaque()) })
     }

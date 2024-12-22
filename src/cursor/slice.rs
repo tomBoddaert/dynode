@@ -1,4 +1,4 @@
-use core::alloc::{AllocError, Allocator, Layout};
+use core::alloc::{Allocator, Layout};
 
 use crate::{node::Header, AllocateError, Ends, MaybeUninitNode};
 
@@ -8,8 +8,13 @@ impl<T, A> CursorMut<'_, [T], A>
 where
     A: Allocator,
 {
-    #[inline]
-    fn try_allocate_uninit_slice_before_internal(
+    /// Attempts to allocate an uninitialised slice node before the current node.
+    ///
+    /// If the cursor is on the "ghost" element, this will allocate the node at the back of the list.
+    ///
+    /// # Errors
+    /// If allocation fails, or an arithmetic overflow occours in [`Layout::array`], this will return an [`AllocateError`].
+    pub fn try_allocate_uninit_slice_before(
         &mut self,
         length: usize,
     ) -> Result<MaybeUninitNode<[T], A>, AllocateError> {
@@ -28,7 +33,7 @@ where
             },
         );
 
-        let value_layout = Layout::array::<T>(length)?;
+        let value_layout = Layout::array::<T>(length).map_err(AllocateError::new_layout)?;
 
         unsafe {
             Node::try_new_uninit(
@@ -43,8 +48,13 @@ where
         }
     }
 
-    #[inline]
-    fn try_allocate_uninit_slice_after_internal(
+    /// Attempts to allocate an uninitialised slice node after the current node.
+    ///
+    /// If the cursor is on the "ghost" element, this will allocate the node at the front of the list.
+    ///
+    /// # Errors
+    /// If allocation fails, or an arithmetic overflow occours in [`Layout::array`], this will return an [`AllocateError`].
+    pub fn try_allocate_uninit_slice_after(
         &mut self,
         length: usize,
     ) -> Result<MaybeUninitNode<[T], A>, AllocateError> {
@@ -63,7 +73,7 @@ where
             },
         );
 
-        let value_layout = Layout::array::<T>(length)?;
+        let value_layout = Layout::array::<T>(length).map_err(AllocateError::new_layout)?;
 
         unsafe {
             Node::try_new_uninit(
@@ -78,73 +88,77 @@ where
         }
     }
 
-    pub fn try_allocate_uninit_slice_before(
-        &mut self,
-        length: usize,
-    ) -> Result<MaybeUninitNode<[T], A>, AllocError> {
-        self.try_allocate_uninit_slice_before_internal(length)
-            .map_err(Into::into)
-    }
-
-    pub fn try_allocate_uninit_slice_after(
-        &mut self,
-        length: usize,
-    ) -> Result<MaybeUninitNode<[T], A>, AllocError> {
-        self.try_allocate_uninit_slice_after_internal(length)
-            .map_err(Into::into)
-    }
-
     #[must_use]
+    /// Allocates an uninitialised slice node before the current node.
+    ///
+    /// If the cursor is on the "ghost" element, this will allocate the node at the back of the list.
     pub fn allocate_uninit_slice_before(&mut self, length: usize) -> MaybeUninitNode<[T], A> {
-        AllocateError::unwrap_alloc(self.try_allocate_uninit_slice_before_internal(length))
+        AllocateError::unwrap_result(self.try_allocate_uninit_slice_before(length))
     }
 
     #[must_use]
+    /// Allocates an uninitialised slice node after the current node.
+    ///
+    /// If the cursor is on the "ghost" element, this will allocate the node at the front of the list.
     pub fn allocate_uninit_slice_after(&mut self, length: usize) -> MaybeUninitNode<[T], A> {
-        AllocateError::unwrap_alloc(self.try_allocate_uninit_slice_after_internal(length))
+        AllocateError::unwrap_result(self.try_allocate_uninit_slice_after(length))
     }
 
-    pub fn try_insert_copy_slice_before(&mut self, src: &[T]) -> Result<(), AllocError>
+    /// Attempts to copy the slice `src` and insert it before the current node.
+    ///
+    /// # Errors
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_insert_copy_slice_before(&mut self, src: &[T]) -> Result<(), AllocateError>
     where
         T: Copy,
     {
-        let mut node = self.try_allocate_uninit_slice_before_internal(src.len())?;
+        let mut node = self.try_allocate_uninit_slice_before(src.len())?;
         node.copy_from_slice(src);
         unsafe { node.insert() };
         Ok(())
     }
 
-    pub fn try_insert_copy_slice_after(&mut self, src: &[T]) -> Result<(), AllocError>
+    /// Attempts to copy the slice `src` and insert it after the current node.
+    ///
+    /// # Errors
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_insert_copy_slice_after(&mut self, src: &[T]) -> Result<(), AllocateError>
     where
         T: Copy,
     {
-        let mut node = self.try_allocate_uninit_slice_after_internal(src.len())?;
+        let mut node = self.try_allocate_uninit_slice_after(src.len())?;
         node.copy_from_slice(src);
         unsafe { node.insert() };
         Ok(())
     }
 
+    /// Copies the slice `src` and inserts it before the current node.
     pub fn insert_copy_slice_before(&mut self, src: &[T])
     where
         T: Copy,
     {
         let mut node =
-            AllocateError::unwrap_alloc(self.try_allocate_uninit_slice_before_internal(src.len()));
+            AllocateError::unwrap_result(self.try_allocate_uninit_slice_before(src.len()));
         node.copy_from_slice(src);
         unsafe { node.insert() };
     }
 
+    /// Copies the slice `src` and inserts it after the current node.
     pub fn insert_copy_slice_after(&mut self, src: &[T])
     where
         T: Copy,
     {
         let mut node =
-            AllocateError::unwrap_alloc(self.try_allocate_uninit_slice_after_internal(src.len()));
+            AllocateError::unwrap_result(self.try_allocate_uninit_slice_after(src.len()));
         node.copy_from_slice(src);
         unsafe { node.insert() };
     }
 
-    pub fn try_insert_clone_slice_before(&mut self, src: &[T]) -> Result<(), AllocError>
+    /// Attempts to clone the slice `src` and insert it before the current node.
+    ///
+    /// # Errors
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_insert_clone_slice_before(&mut self, src: &[T]) -> Result<(), AllocateError>
     where
         T: Clone,
     {
@@ -154,7 +168,11 @@ where
         Ok(())
     }
 
-    pub fn try_insert_clone_slice_after(&mut self, src: &[T]) -> Result<(), AllocError>
+    /// Attempts to clone the slice `src` and insert it after the current node.
+    ///
+    /// # Errors
+    /// If allocation fails, this will return an [`AllocateError`].
+    pub fn try_insert_clone_slice_after(&mut self, src: &[T]) -> Result<(), AllocateError>
     where
         T: Clone,
     {
@@ -164,6 +182,7 @@ where
         Ok(())
     }
 
+    /// Clones the slice `src` and inserts it before the current node.
     pub fn insert_clone_slice_before(&mut self, src: &[T])
     where
         T: Clone,
@@ -173,6 +192,7 @@ where
         unsafe { node.insert() };
     }
 
+    /// Clones the slice `src` and inserts it after the current node.
     pub fn insert_clone_slice_after(&mut self, src: &[T])
     where
         T: Clone,

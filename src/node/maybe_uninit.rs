@@ -1,7 +1,7 @@
 #[cfg(feature = "alloc")]
 use crate::alloc;
 use core::{
-    alloc::{AllocError, Allocator, Layout},
+    alloc::{Allocator, Layout},
     any::type_name,
     fmt,
     hint::unreachable_unchecked,
@@ -80,7 +80,7 @@ where
     #[must_use]
     #[inline]
     /// Gets a pointer to the value with no metadata.
-    pub fn value_ptr(&self) -> NonNull<()> {
+    pub const fn value_ptr(&self) -> NonNull<()> {
         self.node().value_ptr()
     }
 
@@ -165,21 +165,25 @@ where
     }
 
     #[cfg(feature = "alloc")]
-    #[inline]
-    unsafe fn try_take_boxed_internal(mut self) -> Result<alloc::Box<U, A>, AllocateError>
+    /// Attempts to move the value into a box and return it.
+    ///
+    #[doc = init_docs!()]
+    ///
+    /// # Errors
+    /// If allocation fails, this will return an [`AllocateError`] with the node in it.
+    pub unsafe fn try_take_boxed(self) -> Result<alloc::Box<U, A>, AllocateError<Self>>
     where
         A: Clone,
     {
         let value_layout = unsafe { Layout::for_value_raw(self.as_ptr().as_ptr()) };
         let allocator = self.list.allocator.clone();
 
-        let ptr = allocator.allocate(value_layout).map_err(|error| {
-            unsafe { self.drop_in_place() };
-            AllocateError::Alloc {
-                error,
-                layout: value_layout,
+        let ptr = match allocator.allocate(value_layout) {
+            Ok(value) => value,
+            Err(error) => {
+                return Err(AllocateError::new_alloc(error, value_layout).with_value(self))
             }
-        })?;
+        };
 
         unsafe {
             ptr.cast::<u8>()
@@ -192,20 +196,6 @@ where
     }
 
     #[cfg(feature = "alloc")]
-    /// Attempts to move the value into a box and return it.
-    ///
-    #[doc = init_docs!()]
-    ///
-    /// # Errors
-    /// If allocation fails, this will return an [`AllocError`].
-    pub unsafe fn try_take_boxed(self) -> Result<alloc::Box<U, A>, AllocError>
-    where
-        A: Clone,
-    {
-        unsafe { Self::try_take_boxed_internal(self) }.map_err(Into::into)
-    }
-
-    #[cfg(feature = "alloc")]
     #[must_use]
     /// Moves the value into a box and returns it.
     ///
@@ -214,7 +204,14 @@ where
     where
         A: Clone,
     {
-        AllocateError::unwrap_alloc(unsafe { Self::try_take_boxed_internal(self) })
+        match unsafe { Self::try_take_boxed(self) } {
+            Ok(value) => value,
+            Err(error) => {
+                let (mut node, error) = error.into_parts();
+                unsafe { node.drop_in_place() };
+                error.handle()
+            }
+        }
     }
 }
 
