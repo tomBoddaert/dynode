@@ -1,17 +1,27 @@
-[package]
-name = "dyn_list"
-version = "0.1.0"
+[workspace]
+resolver = "2"
+members = ["dynode", "dyn_list"]
+
+[workspace.package]
 authors = ["Tom Boddaert"]
 edition = "2021"
-description = "A linked list that can hold dynamically sized values in its nodes."
-readme = "README.md"
-homepage = "https://github.com/tomBoddaert/dyn_list"
-repository = "https://github.com/tomBoddaert/dyn_list"
+homepage = "https://github.com/tomBoddaert/dynode"
+repository = "https://github.com/tomBoddaert/dynode"
 license = "MIT OR Apache-2.0"
-keywords = ["data-structures", "linked-list"]
-categories = ["data-structures", "no-std"]
 
-[features]
-default = ["std"]
-std = ["alloc"]
-alloc = []
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+perf = "warn"
+cargo = "warn"
+alloc_instead_of_core = "warn"
+std_instead_of_alloc = "warn"
+std_instead_of_core = "warn"
+get_unwrap = "warn"
+todo = "warn"
+undocumented_unsafe_blocks = "warn"
+multiple_unsafe_ops_per_block = "warn"

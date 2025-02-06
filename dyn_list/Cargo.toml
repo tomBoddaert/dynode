@@ -1,0 +1,25 @@
+[package]
+name = "dyn_list"
+version = "0.2.0"
+authors.workspace = true
+edition.workspace = true
+description = "A linked list that can hold dynamically sized values in its nodes."
+readme = "README.md"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["data-structures", "linked-list"]
+categories = ["data-structures", "no-std"]
+
+[features]
+default = ["std"]
+std = ["alloc", "dynode/std"]
+alloc = ["dynode/alloc"]
+
+[dependencies.dynode]
+version = "0.0.0"
+path = "../dynode"
+default-features = false
+
+[lints]
+workspace = true
