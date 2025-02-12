@@ -55,6 +55,7 @@ where
         AllocateError::unwrap_result(self.try_allocate_uninit_array_back(length))
     }
 
+    // TODO: rename `try_push_front_copy_slice` for consistency
     /// Attempts to copy the array `src` and push it to the front of the list.
     ///
     /// # Errors
@@ -69,6 +70,7 @@ where
         Ok(())
     }
 
+    // TODO: rename `try_push_back_copy_slice` for consistency
     /// Attempts to copy the array `src` and push it to the back of the list.
     ///
     /// # Errors
@@ -83,6 +85,7 @@ where
         Ok(())
     }
 
+    // TODO: rename `push_front_copy_slice` for consistency
     /// Copies the array `src` and pushes it to the front of the list.
     pub fn push_front_copy_array(&mut self, src: &[T])
     where
@@ -93,6 +96,7 @@ where
         unsafe { node.insert() };
     }
 
+    // TODO: rename `push_back_copy_slice` for consistency
     /// Copies the array `src` and pushes it to the back of the list.
     pub fn push_back_copy_array(&mut self, src: &[T])
     where
@@ -103,6 +107,7 @@ where
         unsafe { node.insert() };
     }
 
+    // TODO: rename `try_push_front_clone_slice` for consistency
     /// Attempts to clone the array `src` and push it to the front of the list.
     ///
     /// # Errors
@@ -117,6 +122,7 @@ where
         Ok(())
     }
 
+    // TODO: rename `try_push_back_clone_slice` for consistency
     /// Attempts to clone the array `src` and push it to the back of the list.
     ///
     /// # Errors
@@ -131,6 +137,7 @@ where
         Ok(())
     }
 
+    // TODO: rename `push_front_clone_slice` for consistency
     /// Clones the array `src` and pushes it to the front of the list.
     pub fn push_front_clone_array(&mut self, src: &[T])
     where
@@ -141,6 +148,7 @@ where
         unsafe { node.insert() };
     }
 
+    // TODO: rename `push_back_clone_slice` for consistency
     /// Clones the array `src` and pushes it to the back of the list.
     pub fn push_back_clone_array(&mut self, src: &[T])
     where

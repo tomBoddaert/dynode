@@ -229,7 +229,7 @@ where
     }
 
     #[must_use]
-    /// Removes the current node.
+    /// Removes the current node and moves to the previous.
     ///
     /// If the cursor is pointing to the "ghost" element, this returns [`None`].
     pub fn remove_current_node(&mut self) -> Option<MaybeUninitNode<U, A>> {
@@ -244,15 +244,15 @@ where
 
             debug_assert_eq!(next_header.previous, Some(node));
             next_header.previous = header.previous;
-
-            *front = next;
         }
 
         if let Some(previous) = header.previous {
             let previous_header = unsafe { previous.header_ptr().as_mut() };
+
             debug_assert_eq!(previous_header.next, Some(node));
             previous_header.next = header.next;
         }
+        self.current = header.previous;
 
         match (header.next, header.previous) {
             (Some(_next), Some(_previous)) => {}
